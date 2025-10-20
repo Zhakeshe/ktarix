@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="kk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ұлы Жібек жолы — Тарихи карта</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <style>
+    :root{--sepia:#efe3d7;--paper:#f6efe6}
+    html,body,#map{height:100%;margin:0;padding:0}
+    body{font-family: Georgia, 'Times New Roman', serif;background:var(--paper);color:#2b2b2b}
+    #map{width:100%;height:100vh;filter:contrast(0.95) saturate(0.9)}
+    .sidebar{position:absolute;top:12px;left:12px;z-index:1000;background:rgba(255,255,240,0.95);padding:14px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.2);max-width:340px}
+    h1{font-size:18px;margin:0 0 8px 0}
+    .route-item{cursor:pointer;padding:8px;border-radius:6px;margin:6px 0;background:rgba(0,0,0,0.02)}
+    .route-item:hover{background:rgba(0,0,0,0.04)}
+    .legend{margin-top:8px;font-size:13px}
+    .btn{display:inline-block;padding:6px 10px;border-radius:6px;background:#6a4a3c;color:#fff;text-decoration:none;margin-top:8px}
+    .city-list{margin-top:10px;max-height:220px;overflow:auto}
+    .city-item{padding:6px;border-bottom:1px dashed rgba(0,0,0,0.05);cursor:pointer}
+    .city-item:hover{background:rgba(0,0,0,0.03)}
+    /* modal */
+    .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--paper);padding:18px;border-radius:8px;z-index:2000;box-shadow:0 10px 30px rgba(0,0,0,0.3);max-width:760px;width:90%;display:none}
+    .modal.show{display:block}
+    .modal .close{float:right;cursor:pointer;font-weight:bold}
+    .modal img{max-width:320px;float:left;margin-right:12px;border-radius:6px;border:1px solid rgba(0,0,0,0.06)}
+    .modal .content{overflow:hidden}
+    .attribution{font-size:12px;color:#666;margin-top:8px}
+    /* vintage map overlay effect */
+    .vignette{pointer-events:none;position:absolute;inset:0;background:radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.12) 100%);mix-blend-mode:multiply;z-index:1200}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="vignette"></div>
+  <div class="sidebar" id="sidebar">
+    <h1>Ұлы Жібек жолы — тарихи карта</h1>
+    <div>Интерактив: 6 негізгі бағыт. Қалаға бассаң, толық мәлімет шығады (текст + сурет).</div>
+
+    <div style="margin-top:8px"><strong>Маршруттар</strong></div>
+    <div id="routes-list"></div>
+    <div class="legend">
+      <strong>Легенда</strong>
+      <div>🔴 Солтүстік</div>
+      <div>🟢 Оңтүстік</div>
+      <div>🔵 Теңіз</div>
+      <div>🟠 Орталық</div>
+      <div>🟣 Ферғана–Шаш–Сыр</div>
+      <div>⚫ Батыс</div>
+    </div>
+
+    <div style="margin-top:8px"><strong>Қалалар</strong></div>
+    <div class="city-list" id="city-list"></div>
+    <a class="btn" id="resetBtn">Картаға оралу</a>
+    <div class="attribution">Made with Leaflet — Edit images/description in the JS <em>cities</em> array.</div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="close" id="modalClose">✕</div>
+    <div class="modal-body">
+      <img id="modalImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='200'><rect width='100%' height='100%' fill='%23efe3d7'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%236a4a3c' font-family='Georgia' font-size='18'>Сурет жоқ</text></svg>" alt="city image" />
+      <div class="content">
+        <h2 id="modalTitle">Атауы</h2>
+        <div id="modalText">Мәтін</div>
+        <div class="attribution" id="modalAttr"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    (function(){
+      if (typeof L === 'undefined'){
+        alert('Leaflet жүктелмеді — интернет байланысын тексеріңіз.');
+        return;
+      }
+
+      const map = L.map('map', {zoomControl:true}).setView([40,65], 4);
+
+      // A warm-toned tile layer (OpenStreetMap) — user can replace with a vintage raster if they host one
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        maxZoom: 18,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Data: routes and cities. To add images, put a direct image URL in city.image
+      const routes = [
+        {id:'north',name:'Солтүстік бағыт',color:'#d32f2f',coords:[[34.3416,108.9398],[40.1421,94.6610],[43.8256,87.6168],[39.4704,75.9898],[43.2383,76.9458],[42.9,71.4],[43.0,65.7],[41.0,57.0],[41.0,28.9784]]},
+        {id:'south',name:'Оңтүстік бағыт',color:'#2e7d32',coords:[[34.3416,108.9398],[39.0,77.0],[41.2995,69.2401],[39.6270,66.97497],[37.0,64.0],[35.6892,51.3890],[33.3152,44.3661],[33.5138,36.2765],[31.2,29.9]]},
+        {id:'sea',name:'Теңіз бағыты',color:'#1565c0',coords:[[23.1291,113.2644],[2.1896,102.2501],[1.3521,103.8198],[19.0760,72.8777],[12.9791,77.5913],[12.7794,45.0285],[31.2001,29.9187]]},
+        {id:'central',name:'Орталық бағыт',color:'#fb8c00',coords:[[42.95,89.19],[43.3,81.3],[43.2383,76.9458],[42.9,71.4],[43.2963,68.2560],[45.0,60.0]]},
+        {id:'ferghana',name:'Ферғана–Шаш–Сыр',color:'#6a1b9a',coords:[[40.0,71.7],[41.2995,69.2401],[41.0,65.0],[45.0,62.0],[48.0,50.0]]},
+        {id:'west',name:'Батыс бағыт',color:'#212121',coords:[[39.7747,64.4286],[37.6612,62.1745],[35.6892,51.3890],[36.2,50.0],[41.0082,28.9784]]}
+      ];
+
+      // Important historical cities (with sample descriptions). Add image: 'https://.../image.jpg'
+      const cities = [
+        {id:'xian',name:"Сиань (Чанъань)", lat:34.3416, lon:108.9398, image:'', attr:'', text:'Қытайдың ежелгі астанасы, Ұлы Жібек жолының шығыс бастау нүктесі. Б.з.д. және ортағасырларда мәдениет пен сауда орталығы болды.'},
+        {id:'kashgar',name:'Қашғар', lat:39.4704, lon:75.9898, image:'', attr:'', text:'Орталық Азияның маңызды керуен қаласы. Қазір Қытайдың Шыңжаң аймағында орналасқан.'},
+        {id:'samarkand',name:'Самарқанд', lat:39.6270, lon:66.97497, image:'', attr:'', text:'Орта Азияның мәдени һәм сауда орталығы. Регистан және атақты архитектурасы бар.'},
+        {id:'bukhara',name:'Бұхара', lat:39.7747, lon:64.4286, image:'', attr:'', text:'Исламды оқу мен ғылым орталығы. Көп ғасырлар бойы сауда мен білімнің орталығы болған.'},
+        {id:'tashkent',name:'Ташкент', lat:41.2995, lon:69.2401, image:'', attr:'', text:'Қазіргі Ташкент — тарихи сауда торабынан дамыған қала.'},
+        {id:'taraz',name:'Тараз', lat:42.9, lon:71.4, image:'', attr:'', text:'Қазақстандағы Ұлы Жібек жолындағы маңызды қалалардың бірі. Тараз — сауда мен мәдениет орталығы болған.'},
+        {id:'turkestan',name:'Түркістан', lat:43.2963, lon:68.2560, image:'', attr:'', text:'Әулие Қожа кесенесімен танымал, ортағасырлық маңызды қала.'},
+        {id:'otyrar',name:'Отырар', lat:43.0, lon:65.7, image:'', attr:'', text:'Ортағасырда үлкен коммерциялық және мәдени орталық болған қала.'},
+        {id:'istanbul',name:'Стамбул (Константинополь)', lat:41.0082, lon:28.9784, image:'', attr:'', text:'Еуропаға шығатын негізгі нүкте. Византия және Осман кезеңдерінде маңызды сауда орталығы.'},
+        {id:'alexandria',name:'Александрия', lat:31.2001, lon:29.9187, image:'', attr:'', text:'Жерорта теңізінің жағалауындағы маңызды порт, теңіз бағыты үшін маңызды.'}
+      ];
+
+      const layers = {};
+
+      // Draw routes
+      routes.forEach(r=>{
+        const poly = L.polyline(r.coords, {color:r.color, weight:4, opacity:0.9}).addTo(map);
+        poly.bindPopup(`<strong>${r.name}</strong>`);
+        layers[r.id]=poly;
+      });
+
+      // Add city markers
+      const cityMarkers = {};
+      const cityListEl = document.getElementById('city-list');
+      cities.forEach(c=>{
+        const m = L.circleMarker([c.lat,c.lon],{radius:6,fillColor:'#fff',color:'#333',weight:1,fillOpacity:1}).addTo(map);
+        m.bindTooltip(c.name,{direction:'top'});
+        m.on('click', ()=> openModal(c));
+        cityMarkers[c.id]=m;
+
+        // list item
+        const el = document.createElement('div'); el.className='city-item'; el.textContent=c.name;
+        el.onclick = ()=>{ map.setView([c.lat,c.lon],6); openModal(c); };
+        cityListEl.appendChild(el);
+      });
+
+      // Build routes list in sidebar
+      const routesList = document.getElementById('routes-list');
+      routes.forEach(r=>{
+        const el = document.createElement('div'); el.className='route-item';
+        el.innerHTML = `<span style="display:inline-block;width:14px;height:14px;background:${r.color};margin-right:8px;vertical-align:middle;border-radius:3px"></span>${r.name}`;
+        el.onclick = ()=>{ map.fitBounds(layers[r.id].getBounds(),{padding:[40,40]}); layers[r.id].openPopup(); };
+        routesList.appendChild(el);
+      });
+
+      // Modal logic
+      const modal = document.getElementById('modal');
+      const modalImg = document.getElementById('modalImg');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalText = document.getElementById('modalText');
+      const modalAttr = document.getElementById('modalAttr');
+      document.getElementById('modalClose').onclick = ()=>{ modal.classList.remove('show'); };
+
+      function openModal(city){
+        modalTitle.innerHTML = city.name;
+        modalText.innerHTML = city.text || 'Мәтін жоқ.';
+        if(city.image){ modalImg.src = city.image; modalImg.style.display='block'; modalAttr.innerHTML = city.attr || '';} else { modalImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='200'><rect width='100%' height='100%' fill='%23efe3d7'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%236a4a3c' font-family='Georgia' font-size='18'>Сурет жоқ</text></svg>"; modalAttr.innerHTML=''; }
+        modal.classList.add('show');
+      }
+
+      // Reset
+      document.getElementById('resetBtn').addEventListener('click', ()=>{ map.setView([40,65],4); modal.classList.remove('show'); });
+
+      // Helpful console instruction to edit images/descriptions
+      console.log('To add images or change descriptions: edit the `cities` array in the HTML and set city.image = "https://..." and city.attr = "© source"');
+
+    })();
+  </script>
+</body>
+</html>
